@@ -23,6 +23,14 @@ const logout = () => {
 
 <style scoped>
 .nav-link {
-  @apply text-gray-700 text-sm hover:text-blue-600 hover:underline;
+  color: #374151; /* text-gray-700 */
+  font-size: 0.875rem; /* text-sm */
+  transition: color 0.2s;
+  text-decoration: none;
+}
+
+.nav-link:hover {
+  color: #2563eb; /* text-blue-600 */
+  text-decoration: underline;
 }
 </style>
