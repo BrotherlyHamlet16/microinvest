@@ -7,6 +7,8 @@ use App\Mail\InvestmentConfirmation;
 use App\Mail\WithdrawalConfirmation;
 use App\Models\Investment;
 use App\Models\InvestmentPlan;
+use App\Notifications\InvestmentMade;
+use App\Notifications\InvestmentWithdrawn;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Carbon;
@@ -60,6 +62,8 @@ class InvestmentController extends Controller
             'maturity_date' => $maturity,
         ]);
 
+        $user->notify(new InvestmentMade());
+
         return response()->json(['message' => 'Investment created', 'investment' => $investment], 201);
     }
 
@@ -79,6 +83,8 @@ class InvestmentController extends Controller
 
         $investment->withdrawn_at = Carbon::now();
         $investment->save();
+
+        $user->notify(new InvestmentWithdrawn());
 
         // TODO: trigger withdrawal payment, notifications, etc.
 
