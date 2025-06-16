@@ -11,6 +11,6 @@ class InvestmentPlanController extends Controller
     // index() Function to list all investment plans)
     public function index()
     {
-        return response()->json(InvestmentPlan::all());
+        return response()->json(['data' => InvestmentPlan::all()]);
     }
 }

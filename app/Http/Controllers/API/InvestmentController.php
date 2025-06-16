@@ -9,86 +9,101 @@ use App\Models\Investment;
 use App\Models\InvestmentPlan;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Carbon;
 
 class InvestmentController extends Controller
 {
-    // store(Request $request) Function to handle investment creation
+    // List investments for authenticated user
+    public function index(Request $request)
+    {
+        $user = $request->user();
+
+        $investments = Investment::with('plan')
+            ->where('user_id', $user->id)
+            ->get()
+            ->map(function ($inv) {
+                $currentValue = $this->calculateCurrentValue($inv);
+                return [
+                    'id' => $inv->id,
+                    'plan' => $inv->plan,
+                    'amount' => $inv->amount,
+                    'start_date' => $inv->start_date->toDateString(),
+                    'maturity_date' => $inv->maturity_date->toDateString(),
+                    'withdrawn_at' => $inv->withdrawn_at,
+                    'current_value' => $currentValue,
+                    'can_withdraw' => $this->canWithdraw($inv),
+                ];
+            });
+
+        return response()->json(['data' => $investments]);
+    }
+
+    // Create new investment
     public function store(Request $request)
     {
         $request->validate([
-            'plan_id' => 'required|exists:investment_plans,id',
-            'amount' => 'required|numeric|min:10',
+            'plan_id' => 'required | exists:plans, id',
+            'amount' => 'required | numeric | min:1',
         ]);
 
+        $user = $request->user();
         $plan = InvestmentPlan::findOrFail($request->plan_id);
-        $start = now();
-        $maturity = $start->copy()->addDays($plan->lock_period);
+
+        $now = Carbon::now();
+        $maturity = $now->copy()->addDays($plan->lock_period_days);
 
         $investment = Investment::create([
-            'user_id' => $request->user()->id,
-            'investment_plan_id' => $plan->id,
+            'user_id' => $user->id,
+            'plan_id' => $plan->id,
             'amount' => $request->amount,
-            'start_date' => $start,
+            'start_date' => $now,
             'maturity_date' => $maturity,
         ]);
 
-        // Optional email notification
-        Mail::to($request->user()->email)->send(new InvestmentConfirmation($investment));
-
-        return response()->json(['message' => 'Investment successful', 'investment' => $investment], 201);
+        return response()->json(['message' => 'Investment created', 'investment' => $investment], 201);
     }
 
-    //index() Function to list all investments for a user
-    public function index(Request $request)
+    // Withdraw investment
+    public function withdraw(Request $request, $id)
     {
-        $investments = $request->user()->investments()->with('plan')->get();
+        $user = $request->user();
 
-        $portfolio = $investments->map(function ($investment) {
-            $days = $investment->start_date->diffInDays(now());
-            $rate = $investment->plan->daily_return_rate;
-            $accrued = $investment->amount * ($rate / 100) * $days;
+        $investment = Investment::where('id', $id)
+            ->where('user_id', $user->id)
+            ->whereNull('withdrawn_at')
+            ->firstOrFail();
 
-            return [
-                'id' => $investment->id,
-                'plan' => $investment->plan->name,
-                'amount' => $investment->amount,
-                'accrued_interest' => round($accrued, 2),
-                'maturity_date' => $investment->maturity_date,
-                'status' => $investment->status,
-                'eligible_for_withdrawal' => now()->greaterThanOrEqualTo($investment->maturity_date),
-                'total_value' => round($investment->amount + $accrued, 2),
-            ];
-        });
-
-        return response()->json($portfolio);
-    }
-
-    //withdraw($id) Function to withdraw an investment if lock period passed)
-    public function withdraw($id, Request $request)
-    {
-        $investment = Investment::where('id', $id)->where('user_id', $request->user()->id)->firstOrFail();
-
-        if ($investment->status !== 'active') {
-            return response()->json(['error' => 'Already withdrawn'], 400);
+        if (!$this->canWithdraw($investment)) {
+            return response()->json(['error' => 'Investment is still locked'], 403);
         }
 
-        if (now()->lt($investment->maturity_date)) {
-            return response()->json(['error' => 'Cannot withdraw before maturity'], 403);
-        }
-
-        $days = $investment->start_date->diffInDays(now());
-        $rate = $investment->plan->daily_return_rate;
-        $accrued = $investment->amount * ($rate / 100) * $days;
-        $total = $investment->amount + $accrued;
-
-        $investment->status = 'withdrawn';
+        $investment->withdrawn_at = Carbon::now();
         $investment->save();
 
-        Mail::to($request->user()->email)->send(new WithdrawalConfirmation($investment, $total));
+        // TODO: trigger withdrawal payment, notifications, etc.
 
-        return response()->json([
-            'message' => 'Withdrawal successful',
-            'withdrawn_amount' => round($total, 2)
-        ]);
+        return response()->json(['message' => 'Investment withdrawn']);
+    }
+
+    private function calculateCurrentValue(Investment $investment)
+    {
+        $plan = $investment->plan;
+        $start = $investment->start_date;
+        $now = Carbon::now();
+
+        $daysElapsed = $start->diffInDays(min($now, $investment->maturity_date));
+
+        // Compound interest calculation daily for simplicity:
+        // current_value = amount * (1 + return_rate/100)^daysElapsed
+        $rate = $plan->return_rate / 100;
+        $currentValue = $investment->amount * pow(1 + $rate, $daysElapsed);
+
+        return round($currentValue, 2);
+    }
+
+    private function canWithdraw(Investment $investment)
+    {
+        $now = Carbon::now();
+        return $investment->withdrawn_at === null && $now->gte($investment->maturity_date);
     }
 }
