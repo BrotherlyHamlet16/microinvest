@@ -21,6 +21,7 @@ class InvestmentPlanSeeder extends Seeder
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
+
             [
                 'name' => 'GrowFast',
                 'daily_return_rate' => 2.0,
@@ -28,6 +29,7 @@ class InvestmentPlanSeeder extends Seeder
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
+
             [
                 'name' => 'SteadySaver',
                 'daily_return_rate' => 1.0,
