@@ -27,6 +27,13 @@ class InvestmentPlanSeeder extends Seeder
                 'lock_period' => 14,
                 'created_at' => now(),
                 'updated_at' => now(),
+            ],
+            [
+                'name' => 'SteadySaver',
+                'daily_return_rate' => 1.0,
+                'lock_period' => 30,
+                'created_at' => now(),
+                'updated_at' => now(),
             ]
         ]);
     }
